@@ -13,6 +13,7 @@ using System.Runtime.ConstrainedExecution;
 using OFT.Rendering.Context;
 using OFT.Rendering.Tools;
 using System;
+using ATAS.Indicators.Drawing;
 
 public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
 {
@@ -39,6 +40,9 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
     private readonly SuperTrend _st = new SuperTrend() { Period = 10, Multiplier = 1m };
     private readonly KAMA _kama9 = new KAMA() { ShortPeriod = 2, LongPeriod = 109, EfficiencyRatioPeriod = 9 };
     private readonly T3 _t3 = new T3() { Period = 10, Multiplier = 1 };
+    private readonly MACD _macd = new MACD() { ShortPeriod = 12, LongPeriod = 26, SignalPeriod = 9 };
+    private readonly SqueezeMomentum _sq = new SqueezeMomentum() { BBPeriod = 20, BBMultFactor = 2, KCPeriod = 20, KCMultFactor = 1.5m, UseTrueRange = false };
+    private readonly ADX _adx = new ADX() { Period = 10 };
 
     public int TextFont { get => iFontSize; set { iFontSize = value; RecalculateValues(); } }
 
@@ -91,11 +95,13 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
         Add(_psar);
         Add(_st);
         Add(_kama9);
+        Add(_sq);
+        Add(_adx);
     }
 
     protected override void OnCalculate(int bar, decimal value)
     {
-        var pbar = bar-1;
+        var pbar = bar - 1;
         var prevBar = _lastBar;
         _lastBar = bar;
 
@@ -108,10 +114,10 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
         _t3.Calculate(pbar, value);
         fastEma.Calculate(pbar, value);
         slowEma.Calculate(pbar, value);
+        _macd.Calculate(pbar, value);
 
         var ao = ((ValueDataSeries)_ao.DataSeries[0])[pbar];
         var kama9 = ((ValueDataSeries)_kama9.DataSeries[0])[pbar];
-        var kama21 = ((ValueDataSeries)_kama9.DataSeries[0])[pbar];
         var t3 = ((ValueDataSeries)_t3.DataSeries[0])[pbar];
         var fast = ((ValueDataSeries)fastEma.DataSeries[0])[pbar];
         var fastM = ((ValueDataSeries)fastEma.DataSeries[0])[pbar - 1];
@@ -119,8 +125,18 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
         var slowM = ((ValueDataSeries)slowEma.DataSeries[0])[pbar - 1];
         var f1 = ((ValueDataSeries)_ft.DataSeries[0])[pbar];
         var f2 = ((ValueDataSeries)_ft.DataSeries[1])[pbar];
-        var st = ((ValueDataSeries)_st.DataSeries[0])[pbar];
         var psar = ((ValueDataSeries)_psar.DataSeries[0])[pbar];
+        var m1 = ((ValueDataSeries)_macd.DataSeries[0])[pbar];
+        var m2 = ((ValueDataSeries)_macd.DataSeries[1])[pbar];
+        var m3 = ((ValueDataSeries)_macd.DataSeries[2])[pbar];
+        var x = ((ValueDataSeries)_adx.DataSeries[0])[pbar];
+
+        var sq2 = ((ValueDataSeries)_sq.DataSeries[1])[pbar];
+        var sq1 = ((ValueDataSeries)_sq.DataSeries[0])[pbar];
+        var psq1 = ((ValueDataSeries)_sq.DataSeries[0])[pbar - 1];
+        var psq2 = ((ValueDataSeries)_sq.DataSeries[1])[pbar - 1];
+        var ppsq1 = ((ValueDataSeries)_sq.DataSeries[0])[pbar - 2];
+        var ppsq2 = ((ValueDataSeries)_sq.DataSeries[1])[pbar - 2];
 
         var t1 = ((fast - slow) - (fastM - slowM)) * 150;
 
@@ -128,11 +144,17 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
         var fisherDown = (f2 < f1);
         var psarBuy = (psar < candle.Close);
         var psarSell = (psar > candle.Close);
+        var macdUp = (m1 > m2);
+        var macdDown = (m1 < m2);
+
         var red = candle.Close < candle.Open;
         var green = candle.Close > candle.Open;
         var p1C = GetCandle(pbar - 1);
         var c1G = p1C.Open < p1C.Close;
         var c1R = p1C.Open > p1C.Close;
+
+        var CrossUp9 = green && candle.Close > kama9;
+        var CrossDown9 = red && candle.Close < kama9;
 
         var bShowDown = true;
         var bShowUp = true;
@@ -142,25 +164,30 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
         if (psarBuy || !fisherDown || value > t3 || t1 >= 0 || ao > 0)
             bShowDown = false;
 
-        if (green && CurrentPosition < 0)
-            CloseCurrentPosition();
-        if (red && CurrentPosition > 0)
-            CloseCurrentPosition();
-
-        if (green && c1G && candle.Open > p1C.Close)
-            OpenPosition("Volume Imbalance", candle, bar, OrderDirections.Buy);
+        var TopSq = false; // (sq1 > 0 && sq1 < psq1 && psq1 > ppsq1);
+        var BottomSq = false; // (sq1 < 0 && sq1 > psq1 && psq1 < ppsq1);
+        if (green && c1G && candle.Open > p1C.Close && CurrentPosition > 0)
+            OpenPosition("Volume Imbalance ADD", candle, bar, OrderDirections.Buy);
         if (red && c1R && candle.Open < p1C.Close)
-            OpenPosition("Volume Imbalance", candle, bar, OrderDirections.Sell);
+            OpenPosition("Volume Imbalance ADD", candle, bar, OrderDirections.Sell);
 
-        if (green && bShowUp)
-            OpenPosition("Standard Buy", candle, bar, OrderDirections.Buy);
-        if (red && bShowDown)
-            OpenPosition("Standard Sell", candle, bar, OrderDirections.Sell);
+        if ((psarSell || t1 < 0 || BottomSq || CrossDown9) && CurrentPosition > 0)
+            CloseCurrentPosition();
+        if ((psarBuy || t1 > 0 || TopSq || CrossUp9) && CurrentPosition < 0)
+            CloseCurrentPosition();
+
+        if ((macdUp && t1 > 0) && psarBuy && CurrentPosition == 0 && x > 30)
+            OpenPosition("MACD / PSAR", candle, bar, OrderDirections.Buy);
+        if ((macdDown && t1 < 0) && psarSell && CurrentPosition == 0 && x > 30)
+            OpenPosition("MACD / PSAR", candle, bar, OrderDirections.Sell);
+
     }
 
     private void OpenPosition(String sReason, IndicatorCandle c, int bar, OrderDirections direction)
     {
         var sD = String.Empty;
+
+//        if (CurrentPosition != 0) return;
 
         if (direction == OrderDirections.Buy)
         {
@@ -211,3 +238,20 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
     }
 
 }
+
+/*
+                if (green && c1G && candle.Open > p1C.Close)
+                    OpenPosition("Volume Imbalance", candle, bar, OrderDirections.Buy);
+                if (red && c1R && candle.Open < p1C.Close)
+                    OpenPosition("Volume Imbalance", candle, bar, OrderDirections.Sell);
+
+                if (green && bShowUp)
+                    OpenPosition("Standard Buy", candle, bar, OrderDirections.Buy);
+                if (red && bShowDown)
+                    OpenPosition("Standard Sell", candle, bar, OrderDirections.Sell);
+
+        if (green && CurrentPosition < 0)
+                    CloseCurrentPosition();
+                if (red && CurrentPosition > 0)
+                    CloseCurrentPosition();
+*/
