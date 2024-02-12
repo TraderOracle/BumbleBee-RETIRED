@@ -17,7 +17,7 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
 
     private const int LONG = 1;
     private const int SHORT = 2;
-    private const String sVersion = "Beta 1.1";
+    private const String sVersion = "Beta 1.2";
     private const int ACTIVE = 1;
     private const int STOPPED = 2;
 
@@ -174,21 +174,34 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
 
         #region CANDLE CALCULATIONS
 
+        decimal _tick = ChartInfo.PriceChartContainer.Step;
+
         var red = candle.Close < candle.Open;
         var green = candle.Close > candle.Open;
         var p1C = GetCandle(pbar - 1);
+        var p2C = GetCandle(pbar - 2);
+        var p3C = GetCandle(pbar - 3);
         var c1G = p1C.Open < p1C.Close;
         var c1R = p1C.Open > p1C.Close;
+        var c2G = p2C.Open < p2C.Close;
+        var c2R = p2C.Open > p2C.Close;
+        var c3G = p3C.Open < p3C.Close;
+        var c3R = p3C.Open > p3C.Close;
         var c0Body = Math.Abs(candle.Close - candle.Open);
 
         var CrossUp9 = green && candle.Close > kama9;
         var CrossDown9 = red && candle.Close < kama9;
 
+        var eqHigh = red && c1R && c2G && c3G && candle.Close < p1C.Close &&
+    (p1C.Open == p2C.Close || p1C.Open == p2C.Close + _tick || p1C.Open + _tick == p2C.Close);
+
+        var eqLow = green && c1G && c2R && c3R && candle.Close > p1C.Close && (p1C.Open == p2C.Close || p1C.Open == p2C.Close + _tick || p1C.Open + _tick == p2C.Close);
+
         var upWickLarger = red && Math.Abs(candle.High - candle.Open) > Math.Abs(candle.Low - candle.Close);
         var downWickLarger = green && Math.Abs(candle.Low - candle.Open) > Math.Abs(candle.Close - candle.High);
 
-        var Hammer = green && c0Body < Math.Abs(candle.High - candle.Open) && c0Body > Math.Abs(candle.Close - candle.High);
-        var revHammer = red && c0Body < Math.Abs(candle.Low - candle.Open) && c0Body > Math.Abs(candle.Low - candle.Close);
+        var Hammer = green && c0Body > Math.Abs(candle.High - candle.Close) && c0Body < Math.Abs(candle.Open - candle.Low);
+        var revHammer = red && c0Body > Math.Abs(candle.Low - candle.Close) && c0Body < Math.Abs(candle.High - candle.Open);
 
         var under2 = candle.Close < e200;
         var over2 = candle.Close > e200;
@@ -215,13 +228,13 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
         if (bAggressive)
             SellMe = (macdDown || t1 < 0) && psarSell;
 
-        bool closeLong = (psarSell || t1 < 0 || BottomSq || CrossDown9 || revHammer) && CurrentPosition > 0;
+        bool closeLong = (psarSell || t1 < 0 || BottomSq || CrossDown9 || revHammer || eqHigh) && CurrentPosition > 0;
         if (bAggressive || bOvernight)
-            closeLong = (psarSell || t1 < 0 || BottomSq || CrossDown9 || revHammer || red) && CurrentPosition > 0;
+            closeLong = (psarSell || t1 < 0 || BottomSq || CrossDown9 || revHammer || eqHigh || red ) && CurrentPosition > 0;
 
-        bool closeShort = (psarBuy || t1 > 0 || TopSq || CrossUp9 || Hammer) && CurrentPosition < 0;
+        bool closeShort = (psarBuy || t1 > 0 || TopSq || CrossUp9 || Hammer || eqLow) && CurrentPosition < 0;
         if (bAggressive || bOvernight)
-            closeShort = (psarBuy || t1 > 0 || TopSq || CrossUp9 || Hammer || green) && CurrentPosition < 0;
+            closeShort = (psarBuy || t1 > 0 || TopSq || CrossUp9 || Hammer || eqLow || green) && CurrentPosition < 0;
 
         #endregion
 
@@ -292,30 +305,15 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
 
     private String GetReason(bool a, bool b, bool c, bool d, bool e)
     {
+        var ham = CurrentPosition < 0 ? "Hammer candle" : "Reverse hammer candle";
         // psarSell || t1 < 0 || BottomSq || CrossDown9 || revHammer
         if (a) return "PSAR shifted";
         if (b) return "Waddah Explosion";
         if (c) return "Squeeze Relaxer";
         if (d) return "KAMA 9 cross";
-        if (e) return "(reg/rev) Hammer candle";
+        if (e) return ham;
         return "";
     }
 
 }
 
-/*
-                if (green && c1G && candle.Open > p1C.Close)
-                    OpenPosition("Volume Imbalance", candle, bar, OrderDirections.Buy);
-                if (red && c1R && candle.Open < p1C.Close)
-                    OpenPosition("Volume Imbalance", candle, bar, OrderDirections.Sell);
-
-                if (green && bShowUp)
-                    OpenPosition("Standard Buy", candle, bar, OrderDirections.Buy);
-                if (red && bShowDown)
-                    OpenPosition("Standard Sell", candle, bar, OrderDirections.Sell);
-
-        if (green && CurrentPosition < 0)
-                    CloseCurrentPosition();
-                if (red && CurrentPosition > 0)
-                    CloseCurrentPosition();
-*/
