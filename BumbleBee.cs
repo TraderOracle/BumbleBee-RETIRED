@@ -82,13 +82,13 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
             case ACTIVE:
                 TimeSpan t = TimeSpan.FromMilliseconds(clock.ElapsedMilliseconds);
                 String an = String.Format("{0:D2}:{1:D2}:{2:D2}", t.Hours, t.Minutes, t.Seconds);
-                txt = $"BOT ACTIVE on {TradingManager.Portfolio.AccountID} since " + dtStart.ToString() + " (" + an + ")";
+                txt = $"BumbleBee ACTIVE on {TradingManager.Portfolio.AccountID} since " + dtStart.ToString() + " (" + an + ")";
                 context.DrawString(txt, fontB, Color.Lime, upX, upY);
                 if (!clock.IsRunning)
                     clock.Start();
                 break;
             case STOPPED:
-                txt = $"BOT STOPPED on {TradingManager.Portfolio.AccountID}";
+                txt = $"BumbleBee STOPPED on {TradingManager.Portfolio.AccountID}";
                 context.DrawString(txt, fontB, Color.Orange, upX, upY);
                 if (clock.IsRunning)
                     clock.Stop();
@@ -192,8 +192,7 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
         var CrossUp9 = green && candle.Close > kama9;
         var CrossDown9 = red && candle.Close < kama9;
 
-        var eqHigh = red && c1R && c2G && c3G && candle.Close < p1C.Close &&
-    (p1C.Open == p2C.Close || p1C.Open == p2C.Close + _tick || p1C.Open + _tick == p2C.Close);
+        var eqHigh = red && c1R && c2G && c3G && candle.Close < p1C.Close && (p1C.Open == p2C.Close || p1C.Open == p2C.Close + _tick || p1C.Open + _tick == p2C.Close);
 
         var eqLow = green && c1G && c2R && c3R && candle.Close > p1C.Close && (p1C.Open == p2C.Close || p1C.Open == p2C.Close + _tick || p1C.Open + _tick == p2C.Close);
 
@@ -228,13 +227,13 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
         if (bAggressive)
             SellMe = (macdDown || t1 < 0) && psarSell;
 
-        bool closeLong = (psarSell || t1 < 0 || BottomSq || CrossDown9 || revHammer || eqHigh) && CurrentPosition > 0;
+        bool closeLong = (psarSell || t1 < 0 || BottomSq || CrossDown9) && CurrentPosition > 0;
         if (bAggressive || bOvernight)
-            closeLong = (psarSell || t1 < 0 || BottomSq || CrossDown9 || revHammer || eqHigh || red ) && CurrentPosition > 0;
+            closeLong = (psarSell || t1 < 0 || BottomSq || CrossDown9 || red ) && CurrentPosition > 0;
 
-        bool closeShort = (psarBuy || t1 > 0 || TopSq || CrossUp9 || Hammer || eqLow) && CurrentPosition < 0;
+        bool closeShort = (psarBuy || t1 > 0 || TopSq || CrossUp9) && CurrentPosition < 0;
         if (bAggressive || bOvernight)
-            closeShort = (psarBuy || t1 > 0 || TopSq || CrossUp9 || Hammer || eqLow || green) && CurrentPosition < 0;
+            closeShort = (psarBuy || t1 > 0 || TopSq || CrossUp9 || green) && CurrentPosition < 0;
 
         #endregion
 
