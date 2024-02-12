@@ -33,6 +33,9 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
     private decimal Volume = 1;
     private bool bAggressive = false;
     private bool bOvernight = false;
+    private bool bExitHighLow = false;
+    private bool bExitHammer = false;
+    private bool bExitSqueeze = false;
 
     #endregion
 
@@ -54,6 +57,13 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
     #endregion
 
     #region USER SETTINGS
+
+    [Display(GroupName = "Exit trade when:", Name = "Equal High/Low")]
+    public bool ExitHighLow { get => bExitHighLow; set { bExitHighLow = value; RecalculateValues(); } }
+    [Display(GroupName = "Exit trade when:", Name = "Hammer candle")]
+    public bool ExitHammer { get => bExitHammer; set { bExitHammer = value; RecalculateValues(); } }
+    [Display(GroupName = "Exit trade when:", Name = "Reverse squeeze relaxer")]
+    public bool ExitSqueeze { get => bExitSqueeze; set { bExitSqueeze = value; RecalculateValues(); } }
 
     [Display(GroupName = "General", Name = "Aggressive Mode", Description = "Adds more contracts, faster.  But exits on first opposite colored candle")]
     public bool Aggressive { get => bAggressive; set { bAggressive = value; RecalculateValues(); } }
@@ -192,48 +202,43 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
         var CrossUp9 = green && candle.Close > kama9;
         var CrossDown9 = red && candle.Close < kama9;
 
-        var eqHigh = red && c1R && c2G && c3G && candle.Close < p1C.Close && (p1C.Open == p2C.Close || p1C.Open == p2C.Close + _tick || p1C.Open + _tick == p2C.Close);
+        var eqHigh = bExitHighLow && red && c1R && c2G && c3G && candle.Close < p1C.Close && (p1C.Open == p2C.Close || p1C.Open == p2C.Close + _tick || p1C.Open + _tick == p2C.Close);
 
-        var eqLow = green && c1G && c2R && c3R && candle.Close > p1C.Close && (p1C.Open == p2C.Close || p1C.Open == p2C.Close + _tick || p1C.Open + _tick == p2C.Close);
+        var eqLow = bExitHighLow && green && c1G && c2R && c3R && candle.Close > p1C.Close && (p1C.Open == p2C.Close || p1C.Open == p2C.Close + _tick || p1C.Open + _tick == p2C.Close);
 
         var upWickLarger = red && Math.Abs(candle.High - candle.Open) > Math.Abs(candle.Low - candle.Close);
         var downWickLarger = green && Math.Abs(candle.Low - candle.Open) > Math.Abs(candle.Close - candle.High);
 
-        var Hammer = green && c0Body > Math.Abs(candle.High - candle.Close) && c0Body < Math.Abs(candle.Open - candle.Low);
-        var revHammer = red && c0Body > Math.Abs(candle.Low - candle.Close) && c0Body < Math.Abs(candle.High - candle.Open);
-
         var under2 = candle.Close < e200;
         var over2 = candle.Close > e200;
 
-        var bShowDown = true;
-        var bShowUp = true;
-
-        if (psarSell || !fisherUp || value < t3 || t1 < 0 || ao < 0)
-            bShowUp = false;
-        if (psarBuy || !fisherDown || value > t3 || t1 >= 0 || ao > 0)
-            bShowDown = false;
-
-        var TopSq = false; // (sq1 > 0 && sq1 < psq1 && psq1 > ppsq1);
-        var BottomSq = false; // (sq1 < 0 && sq1 > psq1 && psq1 < ppsq1);
+        var TopSq = bExitSqueeze && (sq1 > 0 && sq1 < psq1 && psq1 > ppsq1);
+        var BottomSq = bExitSqueeze && (sq1 < 0 && sq1 > psq1 && psq1 < ppsq1);
 
         bool BuyAdd = green && c1G && candle.Open > p1C.Close && CrossUp9 && CurrentPosition > 0;
         bool SellAdd = red && c1R && candle.Open < p1C.Close && CrossDown9 && CurrentPosition < 0;
 
+        var Hammer = bExitHammer && green && c0Body > Math.Abs(candle.High - candle.Close) && c0Body < Math.Abs(candle.Open - candle.Low);
+        var revHammer = bExitHammer && red && c0Body > Math.Abs(candle.Low - candle.Close) && c0Body < Math.Abs(candle.High - candle.Open);
+
         bool BuyMe = (macdUp || t1 > 0) && psarBuy && CrossUp9 && CurrentPosition == 0 && x > iMinADX;
-        if (bAggressive)
+        if (bAggressive && false)
             BuyMe = (macdUp || t1 > 0) && psarBuy;
 
         bool SellMe = (macdDown || t1 < 0) && psarSell && CrossDown9 && CurrentPosition == 0 && x > iMinADX;
-        if (bAggressive)
+        if (bAggressive && false)
             SellMe = (macdDown || t1 < 0) && psarSell;
 
         bool closeLong = (psarSell || t1 < 0 || BottomSq || CrossDown9) && CurrentPosition > 0;
         if (bAggressive || bOvernight)
-            closeLong = (psarSell || t1 < 0 || BottomSq || CrossDown9 || red ) && CurrentPosition > 0;
+            closeLong = (psarSell || t1 < 0 || BottomSq || CrossDown9 || red) && CurrentPosition > 0;
 
         bool closeShort = (psarBuy || t1 > 0 || TopSq || CrossUp9) && CurrentPosition < 0;
         if (bAggressive || bOvernight)
             closeShort = (psarBuy || t1 > 0 || TopSq || CrossUp9 || green) && CurrentPosition < 0;
+
+        bool wickLong = CurrentPosition > 0 && green && candle.Close > kama9 && candle.Low < kama9;
+        bool wickShort = CurrentPosition < 0 && red && candle.Open < kama9 && candle.High > kama9;
 
         #endregion
 
@@ -241,6 +246,11 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
             CloseCurrentPosition(GetReason(psarSell, t1 < 0, BottomSq, CrossDown9, revHammer));
         if (closeShort)
             CloseCurrentPosition(GetReason(psarBuy, t1 > 0, TopSq, CrossUp9, Hammer));
+
+        if (wickLong)
+            OpenPosition("Candle wick ADD", candle, bar, OrderDirections.Buy);
+        if (wickShort)
+            OpenPosition("Candle wick ADD", candle, bar, OrderDirections.Buy);
 
         if (BuyAdd)
             OpenPosition("Volume Imbalance ADD", candle, bar, OrderDirections.Buy);
