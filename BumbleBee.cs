@@ -1,13 +1,24 @@
-﻿using System.Drawing;
+﻿using System.ComponentModel.DataAnnotations;
+using System.Drawing;
 using System.Diagnostics;
+using System.Net;
+using System.Windows.Input;
+
 using ATAS.DataFeedsCore;
 using ATAS.Indicators;
 using ATAS.Indicators.Technical;
+using ATAS.Strategies.Chart;
+using ATAS.Indicators.Technical.Properties;
 using OFT.Rendering.Context;
 using OFT.Rendering.Tools;
-using System.ComponentModel.DataAnnotations;
+using static ATAS.Indicators.Technical.SampleProperties;
+
 using System.Xml.Linq;
 using System.Runtime.ConstrainedExecution;
+using static System.Runtime.InteropServices.JavaScript.JSType;
+using Utils.Common.Logging;
+using String = System.String;
+using OFT.Rendering.Control;
 
 public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
 {
@@ -17,7 +28,7 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
 
     private const int LONG = 1;
     private const int SHORT = 2;
-    private const String sVersion = "Beta 1.2";
+    private const String sVersion = "Beta 1.3";
     private const int ACTIVE = 1;
     private const int STOPPED = 2;
 
@@ -134,6 +145,9 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
 
     protected override void OnCalculate(int bar, decimal value)
     {
+        if (bar < 6)
+            return;
+
         var pbar = bar - 1;
         var prevBar = _lastBar;
         _lastBar = bar;
@@ -264,8 +278,16 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
 
     }
 
+    #region POSITION METHODS
+
     private void OpenPosition(String sReason, IndicatorCandle c, int bar, OrderDirections direction)
     {
+        if (iBotStatus == STOPPED)
+        {
+            AddLog("Attempted to open position, but bot was stopped");
+            return;
+        }
+
         // Limit 1 order per bar
         if (iPrevOrderBar == bar)
             return;
@@ -285,6 +307,7 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
             Comment = sD
         };
         OpenOrder(order);
+        AddLog(sLastTrade);
     }
 
     private void CloseCurrentPosition(String s)
@@ -300,6 +323,10 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
         };
         OpenOrder(order);
     }
+
+    #endregion
+
+    #region MISC METHODS
 
     private decimal GetOrderVolume()
     {
@@ -323,6 +350,41 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
         if (e) return ham;
         return "";
     }
+
+    public override bool ProcessKeyDown(KeyEventArgs e)
+    {
+        if (iBotStatus == ACTIVE)
+            iBotStatus = STOPPED;
+        else
+            iBotStatus = ACTIVE;
+        return false;
+    }
+
+    private bool IsPointInsideRectangle(Rectangle rectangle, Point point)
+    {
+        return point.X >= rectangle.X && point.X <= rectangle.X + rectangle.Width && point.Y >= rectangle.Y && point.Y <= rectangle.Y + rectangle.Height;
+    }
+
+    public override bool ProcessMouseClick(RenderControlMouseEventArgs e)
+    {
+        if (e.Button == RenderControlMouseButtons.Left && IsPointInsideRectangle(rc, e.Location))
+        {
+            if (iBotStatus == ACTIVE)
+                iBotStatus = STOPPED;
+            else
+                iBotStatus = ACTIVE;
+            return true;
+        }
+
+        return false;
+    }
+
+    private void AddLog(String s)
+    {
+        this.LogDebug(s); 
+    }
+
+    #endregion
 
 }
 
