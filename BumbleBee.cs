@@ -257,9 +257,9 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
         #endregion
 
         if (closeLong)
-            CloseCurrentPosition(GetReason(psarSell, t1 < 0, BottomSq, CrossDown9, revHammer));
+            CloseCurrentPosition(GetReason(psarSell, t1 < 0, BottomSq, CrossDown9, revHammer), bar);
         if (closeShort)
-            CloseCurrentPosition(GetReason(psarBuy, t1 > 0, TopSq, CrossUp9, Hammer));
+            CloseCurrentPosition(GetReason(psarBuy, t1 > 0, TopSq, CrossUp9, Hammer), bar);
 
         if (wickLong)
             OpenPosition("Candle wick ADD", candle, bar, OrderDirections.Buy);
@@ -287,6 +287,11 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
             AddLog("Attempted to open position, but bot was stopped");
             return;
         }
+        if (CurrentPosition >= 2)
+        {
+            AddLog("Attempted to open more than 2 contracts, trade canceled");
+            return;
+        }
 
         // Limit 1 order per bar
         if (iPrevOrderBar == bar)
@@ -310,8 +315,20 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
         AddLog(sLastTrade);
     }
 
-    private void CloseCurrentPosition(String s)
+    private void CloseCurrentPosition(String s, int bar)
     {
+        if (iBotStatus == STOPPED)
+        {
+            AddLog("Attempted to close position, but bot was stopped");
+            return;
+        }
+
+        // Limit 1 order per bar
+        if (iPrevOrderBar == bar)
+            return;
+        else
+            iPrevOrderBar = bar;
+
         var order = new Order
         {
             Portfolio = Portfolio,
