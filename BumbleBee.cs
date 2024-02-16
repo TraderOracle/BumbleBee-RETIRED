@@ -90,13 +90,18 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
         int upY = 50;
         int upX = 50;
         var txt = String.Empty;
+        Size tsize;
 
         switch (iBotStatus)
         {
             case ACTIVE:
                 TimeSpan t = TimeSpan.FromMilliseconds(clock.ElapsedMilliseconds);
                 String an = String.Format("{0:D2}:{1:D2}:{2:D2}", t.Hours, t.Minutes, t.Seconds);
-                txt = $"BumbleBee ACTIVE on {TradingManager.Portfolio.AccountID} since " + dtStart.ToString() + " (" + an + ")";
+                txt = $"BumbleBee version " + sVersion;
+                context.DrawString(txt, font, Color.LightPink, upX, upY);
+                tsize = context.MeasureString(txt, fontB);
+                upY += tsize.Height + 6;
+                txt = $"ACTIVE on {TradingManager.Portfolio.AccountID} since " + dtStart.ToString() + " (" + an + ")";
                 context.DrawString(txt, fontB, Color.Lime, upX, upY);
                 if (!clock.IsRunning)
                     clock.Start();
@@ -108,7 +113,7 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
                     clock.Stop();
                 break;
         }
-        var tsize = context.MeasureString(txt, fontB);
+        tsize = context.MeasureString(txt, fontB);
         upY += tsize.Height + 6;
 
         if (TradingManager.Portfolio != null && TradingManager.Position != null)
@@ -354,8 +359,8 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
     {
         var ham = CurrentPosition < 0 ? "Hammer candle" : "Reverse hammer candle";
         // psarSell || t1 < 0 || BottomSq || CrossDown9 || revHammer
-        if (a) return "PSAR shifted";
-        if (b) return "Waddah Explosion";
+        if (a) return "PSAR change";
+        if (b) return "MACD change";
         if (c) return "Squeeze Relaxer";
         if (d) return "KAMA 9 cross";
         if (e) return ham;
