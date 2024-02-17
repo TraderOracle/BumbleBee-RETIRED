@@ -29,7 +29,7 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
 
     private const int LONG = 1;
     private const int SHORT = 2;
-    private const String sVersion = "Beta 1.4";
+    private const String sVersion = "Beta 1.6";
     private const int ACTIVE = 1;
     private const int STOPPED = 2;
 
