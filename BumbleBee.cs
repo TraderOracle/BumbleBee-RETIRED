@@ -29,7 +29,7 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
 
     private const int LONG = 1;
     private const int SHORT = 2;
-    private const String sVersion = "Beta 1.6";
+    private const String sVersion = "Beta 1.7";
     private const int ACTIVE = 1;
     private const int STOPPED = 2;
 
@@ -243,8 +243,8 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
         var TopSq = bExitSqueeze && (sq1 > 0 && sq1 < psq1 && psq1 > ppsq1);
         var BottomSq = bExitSqueeze && (sq1 < 0 && sq1 > psq1 && psq1 < ppsq1);
 
-        bool BuyAdd = green && c1G && candle.Open > p1C.Close && CrossUp9 && CurrentPosition > 0;
-        bool SellAdd = red && c1R && candle.Open < p1C.Close && CrossDown9 && CurrentPosition < 0;
+        bool BuyAdd = green && c1G && candle.Open > p1C.Close && CurrentPosition > 0;
+        bool SellAdd = red && c1R && candle.Open < p1C.Close && CurrentPosition < 0;
 
         var macd = _short.Calculate(pbar, value) - _long.Calculate(pbar, value);
         var signal = _signal.Calculate(pbar, macd);
