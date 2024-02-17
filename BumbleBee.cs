@@ -158,6 +158,9 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
         var prevBar = _lastBar;
         _lastBar = bar;
 
+        if (prevBar == bar)
+            return;
+
         var candle = GetCandle(pbar);
         var pcandle = GetCandle(bar);
         value = candle.Close;
@@ -259,15 +262,10 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
         #endregion
 
         if (closeLong)
-        {
             CloseCurrentPosition(GetReason(psarSell, t1 < 0, BottomSq, CrossDown9, revHammer), bar);
-            return;
-        }
+
         if (closeShort)
-        {
             CloseCurrentPosition(GetReason(psarBuy, t1 > 0, TopSq, CrossUp9, Hammer), bar);
-            return;
-        }
 
 //        if (wickLong && CurrentPosition > 0)
 //            OpenPosition("Candle wick ADD", candle, bar, OrderDirections.Buy);
