@@ -253,8 +253,10 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
         var Hammer = bExitHammer && green && c0Body > Math.Abs(candle.High - candle.Close) && c0Body < Math.Abs(candle.Open - candle.Low);
         var revHammer = bExitHammer && red && c0Body > Math.Abs(candle.Low - candle.Close) && c0Body < Math.Abs(candle.High - candle.Open);
 
-        bool closeLong = (psarSell || t1 < 0 || BottomSq || CrossDown9) && CurrentPosition > 0;
-        bool closeShort = (psarBuy || t1 > 0 || TopSq || CrossUp9) && CurrentPosition < 0;
+        //bool closeLong = (psarSell || t1 < 0 || BottomSq || CrossDown9) && CurrentPosition > 0;
+        bool closeLong = (psarSell || BottomSq || CrossDown9) && CurrentPosition > 0;
+        //bool closeShort = (psarBuy || t1 > 0 || TopSq || CrossUp9) && CurrentPosition < 0;
+        bool closeShort = (psarBuy || TopSq || CrossUp9) && CurrentPosition < 0;
 
         bool wickLong = CurrentPosition > 0 && green && candle.Close > kama9 && candle.Low < kama9;
         bool wickShort = CurrentPosition < 0 && red && candle.Open < kama9 && candle.High > kama9;
@@ -263,6 +265,7 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
 
         if (closeLong)
             CloseCurrentPosition(GetReason(psarSell, t1 < 0, BottomSq, CrossDown9, revHammer), bar);
+        //CloseCurrentPosition(GetReason(psarSell, t1 < 0, BottomSq, CrossDown9, revHammer), bar);
 
         if (closeShort)
             CloseCurrentPosition(GetReason(psarBuy, t1 > 0, TopSq, CrossUp9, Hammer), bar);
