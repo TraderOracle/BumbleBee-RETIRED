@@ -1,49 +1,44 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using System.Drawing;
 using System.Diagnostics;
-using System.Net;
 using System.Windows.Input;
-using System;
-
 using ATAS.DataFeedsCore;
 using ATAS.Indicators;
 using ATAS.Indicators.Technical;
-using ATAS.Strategies.Chart;
-using ATAS.Indicators.Technical.Properties;
 using OFT.Rendering.Context;
 using OFT.Rendering.Tools;
+using OFT.Rendering.Control;
 using static ATAS.Indicators.Technical.SampleProperties;
 
-using System.Xml.Linq;
-using System.Runtime.ConstrainedExecution;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 using String = System.String;
-using OFT.Rendering.Control;
-using System.Runtime.InteropServices.JavaScript;
 
 public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
 {
     #region VARIABLES
 
+    private int iJunk = 0;
     private List<int> lBars = new List<int>();
+    private Order globalOrder;
 
     private const int LONG = 1;
     private const int SHORT = 2;
-    private const String sVersion = "Beta 1.7";
+    private const String sVersion = "Beta 1.9";
     private const int ACTIVE = 1;
     private const int STOPPED = 2;
+    private int _lastBar = -1;
+    private bool _lastBarCounted;
 
     private bool bBigArrowUp = false;
+    private bool bAggressive = false;
     private int iPrevOrderBar = -1;
     private int iFontSize = 12;
+    private int iAdvMaxContracts = 2;
     private int iBotStatus = ACTIVE;
     private Stopwatch clock = new Stopwatch();
     private Rectangle rc = new Rectangle() { X = 50, Y = 50, Height = 200, Width = 400 };
     private DateTime dtStart = DateTime.Now;
     private String sLastTrade = String.Empty;
-    private int _lastBar = -1;
     private decimal Volume = 1;
-    private bool bExitHighLow = false;
     private bool bExitHammer = false;
     private bool bExitSqueeze = false;
     private bool bExitKama9 = false;
@@ -52,9 +47,9 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
 
     #region INDICATORS
 
-    private readonly EMA _short = new() { Period = 3 };
-    private readonly EMA _long = new() { Period = 10 };
-    private readonly EMA _signal = new() { Period = 16 };
+    private readonly SMA _short = new() { Period = 3 };
+    private readonly SMA _long = new() { Period = 10 };
+    private readonly SMA _signal = new() { Period = 16 };
 
     private readonly AwesomeOscillator _ao = new AwesomeOscillator();
     private readonly ParabolicSAR _psar = new ParabolicSAR();
@@ -65,7 +60,7 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
     private readonly SuperTrend _st = new SuperTrend() { Period = 10, Multiplier = 1m };
     private readonly KAMA _kama9 = new KAMA() { ShortPeriod = 2, LongPeriod = 109, EfficiencyRatioPeriod = 9 };
     private readonly T3 _t3 = new T3() { Period = 10, Multiplier = 1 };
-    private readonly MACD _macd = new MACD() { ShortPeriod = 3, LongPeriod = 10, SignalPeriod = 16 };
+//    private readonly MACD _macd = new MACD() { ShortPeriod = 3, LongPeriod = 10, SignalPeriod = 16 };
     private readonly SqueezeMomentum _sq = new SqueezeMomentum() { BBPeriod = 20, BBMultFactor = 2, KCPeriod = 20, KCMultFactor = 1.5m, UseTrueRange = false };
     private readonly ADX _adx = new ADX() { Period = 10 };
 
@@ -75,17 +70,19 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
 
     [Display(GroupName = "Exit trade when:", Name = "KAMA 9 cross")]
     public bool ExitKama9 { get => bExitKama9; set { bExitKama9 = value; RecalculateValues(); } }
-    [Display(GroupName = "Exit trade when:", Name = "Equal High/Low")]
-    public bool ExitHighLow { get => bExitHighLow; set { bExitHighLow = value; RecalculateValues(); } }
     [Display(GroupName = "Exit trade when:", Name = "Hammer candle")]
     public bool ExitHammer { get => bExitHammer; set { bExitHammer = value; RecalculateValues(); } }
     [Display(GroupName = "Exit trade when:", Name = "Reverse squeeze relaxer")]
     public bool ExitSqueeze { get => bExitSqueeze; set { bExitSqueeze = value; RecalculateValues(); } }
+    public int TextFont { get => iFontSize; set { iFontSize = value; RecalculateValues(); } }
+
+    [Display(Name = "Max simultaneous contracts", GroupName = "Advanced Options", Order = int.MaxValue)]
+    [Range(1, 90)]
+    public int AdvMaxContracts { get => iAdvMaxContracts; set { iAdvMaxContracts = value; RecalculateValues(); } }
 
     [Display(GroupName = "General", Name = "Aggressive Mode", Description = "Adds more contracts, faster.  But exits on first opposite colored candle")]
+    public bool Aggressive { get => bAggressive; set { bAggressive = value; RecalculateValues(); } }
 
-    public int TextFont { get => iFontSize; set { iFontSize = value; RecalculateValues(); } }
-    [Display(GroupName = "Filters", Name = "Minimum ADX", Description = "Minimum ADX value before buy/sell")]
 
     #endregion
 
@@ -151,7 +148,12 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
 
     protected override void OnCalculate(int bar, decimal value)
     {
-        if (bar < CurrentBar - 3)
+        if (bar == 0)
+        {
+            _lastBarCounted = false;
+            return;
+        }
+        else if (bar < CurrentBar - 3)
             return;
 
         var pbar = bar - 1;
@@ -162,51 +164,34 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
             return;
 
         var candle = GetCandle(pbar);
-        var pcandle = GetCandle(bar);
         value = candle.Close;
 
         #region INDICATOR CALCULATIONS
 
-        _t3.Calculate(pbar, value);
         fastEma.Calculate(pbar, value);
         slowEma.Calculate(pbar, value);
-        _macd.Calculate(pbar, value);
 
-        var ao = ((ValueDataSeries)_ao.DataSeries[0])[pbar];
         var kama9 = ((ValueDataSeries)_kama9.DataSeries[0])[pbar];
-        var t3 = ((ValueDataSeries)_t3.DataSeries[0])[pbar];
         var e200 = ((ValueDataSeries)Ema200.DataSeries[0])[pbar];
         var fast = ((ValueDataSeries)fastEma.DataSeries[0])[pbar];
         var fastM = ((ValueDataSeries)fastEma.DataSeries[0])[pbar - 1];
         var slow = ((ValueDataSeries)slowEma.DataSeries[0])[pbar];
         var slowM = ((ValueDataSeries)slowEma.DataSeries[0])[pbar - 1];
-        var f1 = ((ValueDataSeries)_ft.DataSeries[0])[pbar];
-        var f2 = ((ValueDataSeries)_ft.DataSeries[1])[pbar];
         var psar = ((ValueDataSeries)_psar.DataSeries[0])[pbar];
-        var ppsar = ((ValueDataSeries)_psar.DataSeries[0])[bar];
-        var m1 = ((ValueDataSeries)_macd.DataSeries[0])[pbar];
-        var m2 = ((ValueDataSeries)_macd.DataSeries[1])[pbar];
-        var m3shit = ((ValueDataSeries)_macd.DataSeries[2])[pbar];
-        var x = ((ValueDataSeries)_adx.DataSeries[0])[pbar];
 
-        var sq2 = ((ValueDataSeries)_sq.DataSeries[1])[pbar];
         var sq1 = ((ValueDataSeries)_sq.DataSeries[0])[pbar];
         var psq1 = ((ValueDataSeries)_sq.DataSeries[0])[pbar - 1];
-        var psq2 = ((ValueDataSeries)_sq.DataSeries[1])[pbar - 1];
         var ppsq1 = ((ValueDataSeries)_sq.DataSeries[0])[pbar - 2];
-        var ppsq2 = ((ValueDataSeries)_sq.DataSeries[1])[pbar - 2];
+
+        // Linda MACD
+        var macd = _short.Calculate(pbar, value) - _long.Calculate(pbar, value);
+        var signal = _signal.Calculate(pbar, macd);
+        var m3 = macd - signal;
 
         var t1 = ((fast - slow) - (fastM - slowM)) * 150;
 
-        var fisherUp = (f1 < f2);
-        var fisherDown = (f2 < f1);
         var psarBuy = (psar < candle.Close);
         var psarSell = (psar > candle.Close);
-        var ppsarBuy = (ppsar < pcandle.Close);
-        var ppsarSell = (ppsar > pcandle.Close);
-
-        var macdUp = (m1 > m2);
-        var macdDown = (m1 < m2);
 
         #endregion
 
@@ -230,10 +215,6 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
         var CrossUp9 = green && candle.Close > kama9 && bExitKama9;
         var CrossDown9 = red && candle.Close < kama9 && bExitKama9;
 
-        var eqHigh = bExitHighLow && red && c1R && c2G && c3G && candle.Close < p1C.Close && (p1C.Open == p2C.Close || p1C.Open == p2C.Close + _tick || p1C.Open + _tick == p2C.Close);
-
-        var eqLow = bExitHighLow && green && c1G && c2R && c3R && candle.Close > p1C.Close && (p1C.Open == p2C.Close || p1C.Open == p2C.Close + _tick || p1C.Open + _tick == p2C.Close);
-
         var upWickLarger = red && Math.Abs(candle.High - candle.Open) > Math.Abs(candle.Low - candle.Close);
         var downWickLarger = green && Math.Abs(candle.Low - candle.Open) > Math.Abs(candle.Close - candle.High);
 
@@ -246,61 +227,99 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
         bool BuyAdd = green && c1G && candle.Open > p1C.Close && CurrentPosition > 0;
         bool SellAdd = red && c1R && candle.Open < p1C.Close && CurrentPosition < 0;
 
-        var macd = _short.Calculate(pbar, value) - _long.Calculate(pbar, value);
-        var signal = _signal.Calculate(pbar, macd);
-        var m3 = macd - signal;
-
         var Hammer = bExitHammer && green && c0Body > Math.Abs(candle.High - candle.Close) && c0Body < Math.Abs(candle.Open - candle.Low);
         var revHammer = bExitHammer && red && c0Body > Math.Abs(candle.Low - candle.Close) && c0Body < Math.Abs(candle.High - candle.Open);
 
-        //bool closeLong = (psarSell || t1 < 0 || BottomSq || CrossDown9) && CurrentPosition > 0;
-        bool closeLong = (psarSell || BottomSq || CrossDown9) && CurrentPosition > 0;
-        //bool closeShort = (psarBuy || t1 > 0 || TopSq || CrossUp9) && CurrentPosition < 0;
-        bool closeShort = (psarBuy || TopSq || CrossUp9) && CurrentPosition < 0;
+        bool closeLong = (psarSell || t1 < 0 || BottomSq || CrossDown9) && CurrentPosition > 0;
+        bool closeShort = (psarBuy || t1 > 0 || TopSq || CrossUp9) && CurrentPosition < 0;
 
-        bool wickLong = CurrentPosition > 0 && green && candle.Close > kama9 && candle.Low < kama9;
-        bool wickShort = CurrentPosition < 0 && red && candle.Open < kama9 && candle.High > kama9;
+        bool wickLong = green && candle.Open > kama9 && candle.Low < kama9;
+        bool wickShort = red && candle.Close < kama9 && candle.High > kama9;
 
         #endregion
 
-        if (closeLong)
-            CloseCurrentPosition(GetReason(psarSell, t1 < 0, BottomSq, CrossDown9, revHammer), bar);
-        //CloseCurrentPosition(GetReason(psarSell, t1 < 0, BottomSq, CrossDown9, revHammer), bar);
-
-        if (closeShort)
-            CloseCurrentPosition(GetReason(psarBuy, t1 > 0, TopSq, CrossUp9, Hammer), bar);
-
-//        if (wickLong && CurrentPosition > 0)
-//            OpenPosition("Candle wick ADD", candle, bar, OrderDirections.Buy);
-//        if (wickShort && CurrentPosition < 0)
-//            OpenPosition("Candle wick ADD", candle, bar, OrderDirections.Buy);
-
-        if (BuyAdd && CurrentPosition > 0)
-            OpenPosition("Volume Imbalance ADD", candle, bar, OrderDirections.Buy);
-        if (SellAdd && CurrentPosition < 0)
-            OpenPosition("Volume Imbalance ADD", candle, bar, OrderDirections.Sell);
-
-        if (psarBuy && (m3 > 0 || t1 > 0) && CurrentPosition == 0)
-            OpenPosition("MACD / PSAR", candle, bar, OrderDirections.Buy);
-        if (psarSell && (m3 < 0 || t1 < 0) && CurrentPosition == 0)
-            OpenPosition("MACD / PSAR", candle, bar, OrderDirections.Sell);
-
-        if (prevBar != bar && false)
+        if (true) // (_lastBar != bar)
         {
-            if ((green && CurrentPosition < -1) || (red && CurrentPosition > 1))
+            if (true) // (_lastBarCounted)
             {
-                CloseCurrentPosition("GTFO opposite bar", bar);
-                return;
+                if (closeLong)
+                    CloseCurrentPosition(GetReason(psarSell, false, BottomSq, CrossDown9, revHammer), bar);
+                if (closeShort)
+                    CloseCurrentPosition(GetReason(psarBuy, false, TopSq, CrossUp9, Hammer), bar);
+
+                if (green && CurrentPosition > 0 && bAggressive)
+                    OpenPosition("Aggressive ADD", candle, bar, OrderDirections.Buy);
+                if (red && CurrentPosition < 0 && bAggressive)
+                    OpenPosition("Aggressive ADD", candle, bar, OrderDirections.Sell);
+
+                if (wickLong && CurrentPosition > 0)
+                    OpenPosition("Candle wick lADD", candle, bar, OrderDirections.Buy);
+                if (wickShort && CurrentPosition < 0)
+                    OpenPosition("Candle wick sADD", candle, bar, OrderDirections.Sell);
+
+                if (BuyAdd && CurrentPosition > 0)
+                    OpenPosition("Volume Imbalance ADD", candle, bar, OrderDirections.Buy);
+                if (SellAdd && CurrentPosition < 0)
+                    OpenPosition("Volume Imbalance ADD", candle, bar, OrderDirections.Sell);
+
+                if (psarBuy && (m3 > 0 || t1 > 0) && CurrentPosition == 0)
+                    OpenPosition("MACD / PSAR", candle, bar, OrderDirections.Buy);
+                if (psarSell && (m3 < 0 || t1 < 0) && CurrentPosition == 0)
+                    OpenPosition("MACD / PSAR", candle, bar, OrderDirections.Sell);
+
+                if (bAggressive)
+                {
+                    if ((green && CurrentPosition < -1) || (red && CurrentPosition > 1))
+                    {
+                        CloseCurrentPosition("GTFO opposite bar", bar);
+                        return;
+                    }
+                    if (green && CurrentPosition > 0)
+                        OpenPosition("Aggressive Add", candle, bar, OrderDirections.Buy);
+                    if (red && CurrentPosition < 0)
+                        OpenPosition("Aggressive Add", candle, bar, OrderDirections.Sell);
+                }
             }
-            if (green && CurrentPosition > 0)
-                OpenPosition("Gluttony", candle, bar, OrderDirections.Buy);
-            if (red && CurrentPosition < 0)
-                OpenPosition("Gluttony", candle, bar, OrderDirections.Sell);
+            _lastBar = bar;
         }
+        else
+        {
+            if (!_lastBarCounted)
+                _lastBarCounted = true;
+        }
+
 
     }
 
     #region POSITION METHODS
+
+    private void ShittyWaitMethod()
+    {
+        switch (globalOrder.Status())
+        {
+            case OrderStatus.Canceled:
+                break;
+            case OrderStatus.Filled:
+                break;
+            default:
+                Thread.Sleep(500);
+                ShittyWaitMethod();
+                break;
+        }
+    }
+
+    private void BouncePosition(String sReason, IndicatorCandle c, int bar, OrderDirections direction)
+    {
+        if (CurrentPosition != 0)
+        {
+            CloseCurrentPosition("Closing current before opening new", bar);
+            OpenPosition(sReason, c, bar, direction);
+        }
+        else
+        {
+            OpenPosition(sReason, c, bar, direction);
+        }
+    }
 
     private void OpenPosition(String sReason, IndicatorCandle c, int bar, OrderDirections direction)
     {
@@ -309,9 +328,9 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
             AddLog("Attempted to open position, but bot was stopped");
             return;
         }
-        if (CurrentPosition >= 10)
+        if (CurrentPosition >= iAdvMaxContracts)
         {
-            AddLog("Attempted to open more than 2 contracts, trade canceled");
+            AddLog("Attempted to open more than (max) contracts, trade canceled");
             return;
         }
 
@@ -333,12 +352,16 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
             QuantityToFill = 1, // GetOrderVolume(),
             Comment = sD
         };
+        globalOrder = order;
         OpenOrder(order);
         AddLog(sLastTrade);
     }
 
     private void CloseCurrentPosition(String s, int bar)
     {
+        if (s == "")
+            return;
+
         if (iBotStatus == STOPPED)
         {
             AddLog("Attempted to close position, but bot was stopped");
@@ -360,7 +383,37 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
             QuantityToFill = Math.Abs(CurrentPosition),
             Comment = "Position closed, reason: " + s
         };
+        globalOrder = order;
         OpenOrder(order);
+    }
+
+    protected override void OnOrderChanged(Order order)
+    {
+        if (order == globalOrder)
+        {
+            switch (order.Status())
+            {
+                case OrderStatus.None:
+                    // The order has an undefined status (you need to wait for the next method calls).
+                    break;
+                case OrderStatus.Placed:
+                    // the order is placed.
+                    break;
+                case OrderStatus.Filled:
+                    // the order is filled.
+                    break;
+                case OrderStatus.PartlyFilled:
+                    // the order is partially filled.
+                    {
+                        var unfilled = order.Unfilled; // this is a unfilled volume.
+
+                        break;
+                    }
+                case OrderStatus.Canceled:
+                    // the order is canceled.
+                    break;
+            }
+        }
     }
 
     #endregion
