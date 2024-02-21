@@ -467,10 +467,7 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
     {
         if (e.Button == RenderControlMouseButtons.Left && IsPointInsideRectangle(rc, e.Location))
         {
-            if (iBotStatus == ACTIVE)
-                iBotStatus = STOPPED;
-            else
-                iBotStatus = ACTIVE;
+            CloseCurrentPosition("Closing current position", CurrentBar-1);
             return true;
         }
 
