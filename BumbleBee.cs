@@ -22,7 +22,7 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
 
     private const int LONG = 1;
     private const int SHORT = 2;
-    private const String sVersion = "Beta 1.9";
+    private const String sVersion = "Beta 2.0";
     private const int ACTIVE = 1;
     private const int STOPPED = 2;
     private int _lastBar = -1;
@@ -32,12 +32,15 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
     private bool bAggressive = false;
     private int iPrevOrderBar = -1;
     private int iFontSize = 12;
-    private int iAdvMaxContracts = 2;
+    private int iMaxContracts = 20;
+    private int iMaxLoss = 5000;
+    private int iMaxProfit = 10000;
     private int iBotStatus = ACTIVE;
     private Stopwatch clock = new Stopwatch();
     private Rectangle rc = new Rectangle() { X = 50, Y = 50, Height = 200, Width = 400 };
     private DateTime dtStart = DateTime.Now;
-    private String sLastTrade = String.Empty;
+    private String sLastTrade = String.Empty; 
+    private String sLastLog = String.Empty;
     private decimal Volume = 1;
     private bool bExitHammer = false;
     private bool bExitSqueeze = false;
@@ -78,10 +81,18 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
 
     [Display(Name = "Max simultaneous contracts", GroupName = "Advanced Options", Order = int.MaxValue)]
     [Range(1, 90)]
-    public int AdvMaxContracts { get => iAdvMaxContracts; set { iAdvMaxContracts = value; RecalculateValues(); } }
+    public int AdvMaxContracts { get => iMaxContracts; set { iMaxContracts = value; RecalculateValues(); } }
 
     [Display(GroupName = "General", Name = "Aggressive Mode", Description = "Adds more contracts, faster.  But exits on first opposite colored candle")]
     public bool Aggressive { get => bAggressive; set { bAggressive = value; RecalculateValues(); } }
+
+    [Display(GroupName = "General", Name = "Maximum Loss", Description = "Maximum amount of money lost before the bot shuts off")]
+    [Range(1, 90000)]
+    public int MaxLoss { get => iMaxLoss; set { iMaxLoss = value; RecalculateValues(); } }
+
+    [Display(GroupName = "General", Name = "Maximum Profit", Description = "Maximum profit before the bot shuts off")]
+    [Range(1, 90000)]
+    public int MaxProfit { get => iMaxProfit; set { iMaxProfit = value; RecalculateValues(); } }
 
 
     #endregion
@@ -130,6 +141,13 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
             txt = sLastTrade;
             context.DrawString(txt, font, Color.White, upX, upY);
         }
+
+        if (sLastLog != String.Empty && iBotStatus == ACTIVE)
+        {
+            upY += tsize.Height + 6;
+            txt = $"Last Log: " + sLastLog;
+            context.DrawString(txt, font, Color.White, upX, upY);
+        }
     }
 
     #endregion
@@ -155,6 +173,17 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
         }
         else if (bar < CurrentBar - 3)
             return;
+
+        if (ClosedPnL >= iMaxLoss)
+        {
+            AddLog("Max loss reached, bot is shutting off");
+            iBotStatus = STOPPED;
+        }
+        if (ClosedPnL >= iMaxProfit)
+        {
+            AddLog("Max profit reached, bot is shutting off");
+            iBotStatus = STOPPED;
+        }
 
         var pbar = bar - 1;
         var prevBar = _lastBar;
@@ -202,24 +231,13 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
         var red = candle.Close < candle.Open;
         var green = candle.Close > candle.Open;
         var p1C = GetCandle(pbar - 1);
-        var p2C = GetCandle(pbar - 2);
-        var p3C = GetCandle(pbar - 3);
         var c1G = p1C.Open < p1C.Close;
         var c1R = p1C.Open > p1C.Close;
-        var c2G = p2C.Open < p2C.Close;
-        var c2R = p2C.Open > p2C.Close;
-        var c3G = p3C.Open < p3C.Close;
-        var c3R = p3C.Open > p3C.Close;
+
         var c0Body = Math.Abs(candle.Close - candle.Open);
 
         var CrossUp9 = green && candle.Close > kama9 && bExitKama9;
         var CrossDown9 = red && candle.Close < kama9 && bExitKama9;
-
-        var upWickLarger = red && Math.Abs(candle.High - candle.Open) > Math.Abs(candle.Low - candle.Close);
-        var downWickLarger = green && Math.Abs(candle.Low - candle.Open) > Math.Abs(candle.Close - candle.High);
-
-        var under2 = candle.Close < e200;
-        var over2 = candle.Close > e200;
 
         var TopSq = bExitSqueeze && (sq1 > 0 && sq1 < psq1 && psq1 > ppsq1);
         var BottomSq = bExitSqueeze && (sq1 < 0 && sq1 > psq1 && psq1 < ppsq1);
@@ -238,24 +256,34 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
 
         #endregion
 
+        #region OPEN AND CLOSE POSITIONS
+
         if (true) // (_lastBar != bar)
         {
             if (true) // (_lastBarCounted)
             {
+                if (bAggressive)
+                {
+                    if ((green && CurrentPosition < -1) || (red && CurrentPosition > 1))
+                    {
+                        CloseCurrentPosition("Opposite bar exit", bar);
+                        return;
+                    }
+                    if (green && CurrentPosition > 0)
+                        OpenPosition("Aggressive ADD", candle, bar, OrderDirections.Buy);
+                    if (red && CurrentPosition < 0)
+                        OpenPosition("Aggressive ADD", candle, bar, OrderDirections.Sell);
+                }
+
                 if (closeLong)
                     CloseCurrentPosition(GetReason(psarSell, false, BottomSq, CrossDown9, revHammer), bar);
                 if (closeShort)
                     CloseCurrentPosition(GetReason(psarBuy, false, TopSq, CrossUp9, Hammer), bar);
 
-                if (green && CurrentPosition > 0 && bAggressive)
-                    OpenPosition("Aggressive ADD", candle, bar, OrderDirections.Buy);
-                if (red && CurrentPosition < 0 && bAggressive)
-                    OpenPosition("Aggressive ADD", candle, bar, OrderDirections.Sell);
-
                 if (wickLong && CurrentPosition > 0)
-                    OpenPosition("Candle wick lADD", candle, bar, OrderDirections.Buy);
+                    OpenPosition("Candle wick ADD", candle, bar, OrderDirections.Buy);
                 if (wickShort && CurrentPosition < 0)
-                    OpenPosition("Candle wick sADD", candle, bar, OrderDirections.Sell);
+                    OpenPosition("Candle wick ADD", candle, bar, OrderDirections.Sell);
 
                 if (BuyAdd && CurrentPosition > 0)
                     OpenPosition("Volume Imbalance ADD", candle, bar, OrderDirections.Buy);
@@ -266,19 +294,6 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
                     OpenPosition("MACD / PSAR", candle, bar, OrderDirections.Buy);
                 if (psarSell && (m3 < 0 || t1 < 0) && CurrentPosition == 0)
                     OpenPosition("MACD / PSAR", candle, bar, OrderDirections.Sell);
-
-                if (bAggressive)
-                {
-                    if ((green && CurrentPosition < -1) || (red && CurrentPosition > 1))
-                    {
-                        CloseCurrentPosition("GTFO opposite bar", bar);
-                        return;
-                    }
-                    if (green && CurrentPosition > 0)
-                        OpenPosition("Aggressive Add", candle, bar, OrderDirections.Buy);
-                    if (red && CurrentPosition < 0)
-                        OpenPosition("Aggressive Add", candle, bar, OrderDirections.Sell);
-                }
             }
             _lastBar = bar;
         }
@@ -288,6 +303,7 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
                 _lastBarCounted = true;
         }
 
+        #endregion
 
     }
 
@@ -328,7 +344,7 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
             AddLog("Attempted to open position, but bot was stopped");
             return;
         }
-        if (CurrentPosition >= iAdvMaxContracts)
+        if (CurrentPosition >= iMaxContracts)
         {
             AddLog("Attempted to open more than (max) contracts, trade canceled");
             return;
@@ -463,7 +479,7 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
 
     private void AddLog(String s)
     {
-        
+        sLastLog = s;
     }
 
     #endregion
