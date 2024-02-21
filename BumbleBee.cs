@@ -11,6 +11,7 @@ using OFT.Rendering.Control;
 using static ATAS.Indicators.Technical.SampleProperties;
 
 using String = System.String;
+using Utils.Common.Logging;
 
 public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
 {
@@ -39,7 +40,7 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
     private Stopwatch clock = new Stopwatch();
     private Rectangle rc = new Rectangle() { X = 50, Y = 50, Height = 200, Width = 400 };
     private DateTime dtStart = DateTime.Now;
-    private String sLastTrade = String.Empty; 
+    private String sLastTrade = String.Empty;
     private String sLastLog = String.Empty;
     private decimal Volume = 1;
     private bool bExitHammer = false;
@@ -63,7 +64,6 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
     private readonly SuperTrend _st = new SuperTrend() { Period = 10, Multiplier = 1m };
     private readonly KAMA _kama9 = new KAMA() { ShortPeriod = 2, LongPeriod = 109, EfficiencyRatioPeriod = 9 };
     private readonly T3 _t3 = new T3() { Period = 10, Multiplier = 1 };
-//    private readonly MACD _macd = new MACD() { ShortPeriod = 3, LongPeriod = 10, SignalPeriod = 16 };
     private readonly SqueezeMomentum _sq = new SqueezeMomentum() { BBPeriod = 20, BBMultFactor = 2, KCPeriod = 20, KCMultFactor = 1.5m, UseTrueRange = false };
     private readonly ADX _adx = new ADX() { Period = 10 };
 
@@ -79,7 +79,7 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
     public bool ExitSqueeze { get => bExitSqueeze; set { bExitSqueeze = value; RecalculateValues(); } }
     public int TextFont { get => iFontSize; set { iFontSize = value; RecalculateValues(); } }
 
-    [Display(Name = "Max simultaneous contracts", GroupName = "Advanced Options", Order = int.MaxValue)]
+    [Display(Name = "Max simultaneous contracts", GroupName = "General")]
     [Range(1, 90)]
     public int AdvMaxContracts { get => iMaxContracts; set { iMaxContracts = value; RecalculateValues(); } }
 
@@ -480,6 +480,7 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
     private void AddLog(String s)
     {
         sLastLog = s;
+        this.LogDebug(s);
     }
 
     #endregion

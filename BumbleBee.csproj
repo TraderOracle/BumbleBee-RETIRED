@@ -44,6 +44,9 @@
     <Reference Include="System.ServiceModel">
       <HintPath>..\..\..\..\..\Program Files (x86)\ATAS Platform\System.ServiceModel.dll</HintPath>
     </Reference>
+    <Reference Include="Utils.Common">
+      <HintPath>..\..\..\..\..\Program Files (x86)\ATAS Platform\Utils.Common.dll</HintPath>
+    </Reference>
   </ItemGroup>
 
 </Project>
