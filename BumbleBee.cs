@@ -174,12 +174,12 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
         else if (bar < CurrentBar - 3)
             return;
 
-        if (ClosedPnL >= iMaxLoss)
+        if (ClosedPnL >= Math.Abs(iMaxLoss))
         {
             AddLog("Max loss reached, bot is shutting off");
             iBotStatus = STOPPED;
         }
-        if (ClosedPnL >= iMaxProfit)
+        if (ClosedPnL >= Math.Abs(iMaxProfit))
         {
             AddLog("Max profit reached, bot is shutting off");
             iBotStatus = STOPPED;
@@ -401,6 +401,7 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
         };
         globalOrder = order;
         OpenOrder(order);
+        AddLog("Closed, reason: " + s);
     }
 
     protected override void OnOrderChanged(Order order)
@@ -448,15 +449,6 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
         return "";
     }
 
-
-    public override bool ProcessKeyDown(KeyEventArgs e)
-    {
-        if (iBotStatus == ACTIVE)
-            iBotStatus = STOPPED;
-        else
-            iBotStatus = ACTIVE;
-        return false;
-    }
 
     private bool IsPointInsideRectangle(Rectangle rectangle, Point point)
     {
