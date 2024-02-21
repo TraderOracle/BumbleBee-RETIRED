@@ -146,7 +146,7 @@ public class BumbleBee : ATAS.Strategies.Chart.ChartStrategy
         {
             upY += tsize.Height + 6;
             txt = $"Last Log: " + sLastLog;
-            context.DrawString(txt, font, Color.White, upX, upY);
+            context.DrawString(txt, font, Color.Yellow, upX, upY);
         }
     }
 
